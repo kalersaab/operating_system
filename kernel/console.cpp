@@ -13,6 +13,36 @@ namespace
 
     uint8_t color = 0x07;
 
+    void updateCursor()
+    {
+        uint16_t position =
+            cursorRow * VGA_WIDTH + cursorColumn;
+
+        asm volatile(
+            "outb %0, %1"
+            :
+            : "a"(static_cast<uint8_t>(0x0F)), "Nd"(static_cast<uint16_t>(0x3D4))
+        );
+
+        asm volatile(
+            "outb %0, %1"
+            :
+            : "a"(static_cast<uint8_t>(position & 0xFF)), "Nd"(static_cast<uint16_t>(0x3D5))
+        );
+
+        asm volatile(
+            "outb %0, %1"
+            :
+            : "a"(static_cast<uint8_t>(0x0E)), "Nd"(static_cast<uint16_t>(0x3D4))
+        );
+
+        asm volatile(
+            "outb %0, %1"
+            :
+            : "a"(static_cast<uint8_t>(position >> 8)), "Nd"(static_cast<uint16_t>(0x3D5))
+        );
+    }
+
     uint16_t makeEntry(char c, uint8_t colour)
     {
         return static_cast<uint16_t>(c)
@@ -58,6 +88,7 @@ namespace Console
 
         cursorRow = 0;
         cursorColumn = 0;
+        updateCursor();
     }
 
     void putChar(char c)
@@ -68,15 +99,30 @@ namespace Console
             ++cursorRow;
 
             scroll();
+            updateCursor();
             return;
         }
 
         if (c == '\r')
         {
             cursorColumn = 0;
+            updateCursor();
             return;
         }
+        if (c == '\b')
+{
+    if (cursorColumn > 0)
+    {
+        --cursorColumn;
 
+        VGA_MEMORY[
+            cursorRow * VGA_WIDTH + cursorColumn
+        ] = makeEntry(' ', color);
+    }
+
+    updateCursor();
+    return;
+}
         VGA_MEMORY[cursorRow * VGA_WIDTH + cursorColumn] =
             makeEntry(c, color);
 
@@ -89,6 +135,7 @@ namespace Console
         }
 
         scroll();
+        updateCursor();
     }
 
     void write(const char* str)

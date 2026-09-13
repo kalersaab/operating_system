@@ -1,11 +1,18 @@
 #include "console.hpp"
 #include "gdt.hh"
 #include "idt.hh"
+#include "keyboard.hpp"
 #include "pic.hpp"
+#include "memory/heap.hpp"
+#include "memory/physical.hpp"
 #include "pit.hpp"
+#include "shell/shell.hpp"
 
 extern "C"
-void kernel_main()
+char kernel_end;
+
+extern "C"
+void kernel_main(uintptr_t multibootInfo)
 {
     asm volatile("cli");
 
@@ -18,7 +25,7 @@ void kernel_main()
     );
 
     Console::writeLine(
-        "          KALER OS v0.3"
+        "          KALER OS v0.5"
     );
 
     Console::writeLine(
@@ -59,28 +66,20 @@ void kernel_main()
 
     Console::writeLine("OK");
 
-    /*
-     * PIT
-     */
-    Console::write("PIT:        ");
+    PhysicalMemory::initialize(
+        multibootInfo,
+        reinterpret_cast<uintptr_t>(&kernel_end)
+    );
 
+    Heap::initialize();
     PIT::initialize(100);
-
-    Console::writeLine("OK");
+    Keyboard::initialize();
 
     Console::writeLine("");
 
     Console::writeLine(
         "Interrupts: ready"
     );
-
-    Console::writeLine("");
-
-    Console::write("Timer frequency: ");
-
-    Console::writeDec(100);
-
-    Console::writeLine(" Hz");
 
     Console::writeLine("");
 
@@ -96,25 +95,10 @@ void kernel_main()
 
     Console::writeLine("");
 
-    Console::writeLine(
-        "kernel> _"
-    );
-    uint64_t lastTick = 0;
+    Shell::initialize();
+
     while (true)
     {
         asm volatile("hlt");
-        uint64_t currentTick = PIT::getTicks();
-
-    if (currentTick != lastTick)
-    {
-        lastTick = currentTick;
-
-        if ((currentTick % 100) == 0)
-        {
-            Console::write("Timer ticks: ");
-            Console::writeDec(currentTick);
-            Console::writeLine("");
-        }
-    }
     }
 }
