@@ -4,9 +4,11 @@ namespace
 {
     constexpr uint64_t HEAP_SIZE = 1024 * 1024;
     constexpr uint64_t ALIGNMENT = 16;
+    constexpr uint64_t BLOCK_MAGIC = 0x4B414C4552484541;
 
     struct Block
     {
+        uint64_t magic;
         uint64_t size;
         bool free;
         Block* next;
@@ -18,6 +20,9 @@ namespace
 
     uint64_t alignSize(uint64_t size)
     {
+        if (size > UINT64_MAX - (ALIGNMENT - 1))
+            return 0;
+
         return (size + ALIGNMENT - 1) & ~(ALIGNMENT - 1);
     }
 
@@ -31,6 +36,7 @@ namespace
         );
 
         remainder->size = block->size - size - sizeof(Block);
+        remainder->magic = BLOCK_MAGIC;
         remainder->free = true;
         remainder->next = block->next;
 
@@ -45,6 +51,7 @@ namespace Heap
     {
         firstBlock = reinterpret_cast<Block*>(heapStorage);
         firstBlock->size = HEAP_SIZE - sizeof(Block);
+        firstBlock->magic = BLOCK_MAGIC;
         firstBlock->free = true;
         firstBlock->next = nullptr;
         allocatedBytes = 0;
@@ -56,6 +63,8 @@ namespace Heap
             return nullptr;
 
         size = alignSize(size);
+        if (size == 0)
+            return nullptr;
 
         for (Block* block = firstBlock; block; block = block->next)
         {
@@ -71,12 +80,37 @@ namespace Heap
         return nullptr;
     }
 
+    void* allocateZeroed(uint64_t count, uint64_t size)
+    {
+        if (count != 0 && size > UINT64_MAX / count)
+            return nullptr;
+
+        uint64_t total = count * size;
+        auto* memory = static_cast<uint8_t*>(allocate(total));
+
+        if (!memory)
+            return nullptr;
+
+        for (uint64_t index = 0; index < total; ++index)
+            memory[index] = 0;
+
+        return memory;
+    }
+
     void deallocate(void* address)
     {
         if (!address)
             return;
 
         auto* block = reinterpret_cast<Block*>(address) - 1;
+
+        uintptr_t start = reinterpret_cast<uintptr_t>(heapStorage);
+        uintptr_t end = start + HEAP_SIZE;
+        uintptr_t value = reinterpret_cast<uintptr_t>(address);
+
+        if (value < start + sizeof(Block) || value >= end
+            || block->magic != BLOCK_MAGIC)
+            return;
 
         if (!block->free)
         {
@@ -108,6 +142,12 @@ extern "C"
 void* kmalloc(uint64_t size)
 {
     return Heap::allocate(size);
+}
+
+extern "C"
+void* kcalloc(uint64_t count, uint64_t size)
+{
+    return Heap::allocateZeroed(count, size);
 }
 
 extern "C"

@@ -2,6 +2,7 @@
 
 #include "console.hpp"
 #include "memory/heap.hpp"
+#include "memory/paging.hpp"
 #include "memory/physical.hpp"
 #include "pit.hpp"
 
@@ -130,8 +131,11 @@ namespace Shell
             Console::writeLine("  help   list commands");
             Console::writeLine("  clear  clear the screen");
             Console::writeLine("  info   show kernel information");
+            Console::writeLine("  pml4   show the active PML4 address");
+            Console::writeLine("  vaddr  decompose a virtual address");
             Console::writeLine("  ticks  show timer ticks");
             Console::writeLine("  echo   print text");
+            Console::writeLine("  memtest test dynamic kernel memory");
             Console::writeLine("  reboot reboot the system");
             Console::writeLine("  shutdown power off the system");
         }
@@ -152,6 +156,35 @@ namespace Shell
             Console::writeDec(Heap::usedBytes());
             Console::writeLine("");
         }
+        else if (equals(command, "pml4"))
+        {
+            Console::write("Active PML4: ");
+            Console::writeHex(Paging::currentPml4());
+            Console::writeLine("");
+        }
+        else if (equals(command, "vaddr"))
+        {
+            constexpr uintptr_t address = 0x0000123456789ABC;
+
+            Console::write("Virtual address: ");
+            Console::writeHex(address);
+            Console::writeLine("");
+            Console::write("  PML4 index: ");
+            Console::writeDec(Paging::pml4Index(address));
+            Console::writeLine("");
+            Console::write("  PDPT index: ");
+            Console::writeDec(Paging::pdptIndex(address));
+            Console::writeLine("");
+            Console::write("  PD index:   ");
+            Console::writeDec(Paging::pdIndex(address));
+            Console::writeLine("");
+            Console::write("  PT index:   ");
+            Console::writeDec(Paging::ptIndex(address));
+            Console::writeLine("");
+            Console::write("  Offset:     ");
+            Console::writeDec(Paging::pageOffset(address));
+            Console::writeLine("");
+        }
         else if (equals(command, "ticks"))
         {
             Console::write("Timer ticks: ");
@@ -161,6 +194,23 @@ namespace Shell
         else if (startsWith(command, "echo "))
         {
             Console::writeLine(command + 5);
+        }
+        else if (equals(command, "memtest"))
+        {
+            auto* memory = static_cast<uint8_t*>(kmalloc(64));
+
+            if (!memory)
+            {
+                Console::writeLine("memtest: allocation failed");
+            }
+            else
+            {
+                for (uint8_t index = 0; index < 64; ++index)
+                    memory[index] = index;
+
+                Console::writeLine("memtest: kmalloc/write/kfree OK");
+                kfree(memory);
+            }
         }
         else if (equals(command, "reboot"))
         {

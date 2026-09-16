@@ -44,7 +44,7 @@ namespace
         }
     }
 
-    void markFree(uint32_t frame)
+    bool markFree(uint32_t frame)
     {
         uint32_t word = frame / WORD_BITS;
         uint32_t bit = frame % WORD_BITS;
@@ -53,7 +53,10 @@ namespace
         {
             frameBitmap[word] &= ~(1u << bit);
             --used;
+            return true;
         }
+
+        return false;
     }
 }
 
@@ -67,14 +70,23 @@ namespace PhysicalMemory
         used = FRAME_COUNT;
         total = 0;
 
+        if (multibootInfo == 0)
+            return;
+
         auto* info = reinterpret_cast<uint32_t*>(multibootInfo);
         auto* tag = reinterpret_cast<MultibootTag*>(info + 2);
 
         while (tag->type != 0)
         {
-            if (tag->type == 6)
+            if (tag->size < 8)
+                break;
+
+            if (tag->type == 6 && tag->size >= 16)
             {
                 auto* map = reinterpret_cast<MemoryMapTag*>(tag);
+                if (map->entrySize < sizeof(MemoryMapEntry))
+                    break;
+
                 auto* entry = reinterpret_cast<MemoryMapEntry*>(
                     reinterpret_cast<uint8_t*>(map) + 16
                 );
@@ -99,8 +111,8 @@ namespace PhysicalMemory
                             {
                                 uint32_t frame =
                                     static_cast<uint32_t>(address / FRAME_SIZE);
-                                markFree(frame);
-                                ++total;
+                                if (markFree(frame))
+                                    ++total;
                             }
                         }
                     }
@@ -115,8 +127,6 @@ namespace PhysicalMemory
                 (reinterpret_cast<uintptr_t>(tag) + tag->size + 7) & ~uintptr_t(7)
             );
         }
-
-        used = total;
 
         uint32_t firstReserved =
             static_cast<uint32_t>((kernelEnd + FRAME_SIZE - 1) / FRAME_SIZE);
